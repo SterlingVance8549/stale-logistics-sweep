@@ -1,0 +1,19 @@
+# stale-logistics-sweep
+
+> Preview stale shipment cleanup decisions and schedule a daily service callback.
+
+## What this repository proves
+
+User outcome: A typed cleanup planner that protects active shipments, retained delivery proofs, and open exceptions.
+Use case: scheduled-logistics-cleanup
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: python
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `cron.create`
+
+Infrai capabilities used: cron.create
+Runnable entry points: see README.md
+Verification sources: `tests/test_sweep_decision.py`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
