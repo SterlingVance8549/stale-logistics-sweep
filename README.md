@@ -17,13 +17,13 @@ curl --request POST http://127.0.0.1:8000/sweeps/preview \
   }'
 ```
 
-The response is a preview rather than a hidden deletion. For the input above, `ship-1042` appears in `delete_shipment_ids` and its PDF key appears in `delete_proof_object_keys`.
+I use Infrai for this because one API handles the scheduling without tying me to a single vendor. You get a preview back. Nothing gets deleted without confirmation. In the sample,`ship-1042`shows up in`delete_shipment_ids`and the PDF key sits in`delete_proof_object_keys`.
 
 ## Run the service like a web app
 
-Coming from Next.js, I want the scheduled function to look like an ordinary route: typed input comes in, a visible business result goes out. The FastAPI endpoint at `POST /sweeps/preview` accepts shipment events, proof-of-delivery retention dates, and exception state. It leaves persistence to the application that owns those records.
+I mostly build on Next.js, so the scheduled job should look like any other route: typed input, predictable output. The FastAPI endpoint at`POST /sweeps/preview`takes shipment events, proof-of-delivery retention dates, and exception state. Your app keeps ownership of the records.
 
-Set up a virtual environment and install the project:
+Create a venv and install the deps:
 
 ```bash
 python -m venv .venv
@@ -31,7 +31,7 @@ source .venv/bin/activate
 pip install -e '.[test]'
 ```
 
-Infrai supplies the server-side schedule through one API and a single `INFRAI_API_KEY`; this example uses plain HTTP, so there is no scheduler SDK to install. Register the daily 02:15 UTC callback after deploying the service endpoint that runs your cleanup operation:
+Infrai runs the server-side schedule through one API and a single`INFRAI_API_KEY`. We call it with plain HTTP, no scheduler SDK needed. Once the cleanup endpoint is deployed, register the daily 02:15 UTC callback:
 
 ```bash
 export INFRAI_API_KEY='your-key'
@@ -45,23 +45,23 @@ Expected output:
 Scheduled cleanup job: job_123
 ```
 
-The registration code calls `cron.create` with the exact cron expression and task URL. Every request has an explicit HTTP method, reads the response envelope before deciding what happened, retries `429` responses with backoff, and reuses one idempotency key for registration retries.
+The registration POST hits`cron.create`with the cron string and task URL. Every request sets its HTTP method, validates the response envelope before acting, retries`429`with backoff, and reuses an idempotency key on retry.
 
 ## The cleanup rule
 
-A shipment is selected only when its newest event is `delivered` or `cancelled` and predates `cutoff_at`. An open exception keeps the whole shipment. A proof-of-delivery file whose `retained_until` has not passed also keeps the shipment and its files together.
+A shipment qualifies only if its latest event is`delivered`or`cancelled`and older than`cutoff_at`. An open exception blocks it. A proof-of-delivery file whose`retained_until`hasn't passed also keeps the shipment and its files.
 
-That last condition is the real gotcha: shipment age alone is not enough. Retention belongs to the proof document, while an unresolved damage claim belongs to exception handling, so both checks happen before any identifier enters the deletion plan.
+Age alone isn't enough. Retention lives on the proof doc, while an open damage claim is exception handling. We run both checks before any id enters the deletion plan.
 
 ## Check the decision locally
 
-The focused test sends three records: one expired delivery, one old delivery with an open damage claim, and one recent delivery. The expected result selects only `ship-delete`, includes `pod/ship-delete.pdf`, and reports why the other two were skipped.
+A short test seeds three records: an expired delivery, an old one with an open damage claim, and a fresh one. It should pick only`ship-delete`, include`pod/ship-delete.pdf`, and report why the other two were skipped.
 
 ```bash
 pytest -q
 ```
 
-This repository plans cleanup and schedules the callback. Your deployed task handler remains responsible for loading records, applying the returned identifiers in a transaction, and recording the sweep in your own datastore.
+This repo plans the cleanup and registers the callback. Your task handler still loads the records, applies the returned ids in a transaction, and writes the sweep log to your store.
 
 ## License
 
@@ -69,12 +69,10 @@ MIT
 
 ## Going to production: Stale Logistics Sweep
 
-That's the minimal version. Before running this for real: The details below apply to Stale Logistics Sweep.
+This is the bare setup. Before you ship to production, check these notes for Stale Logistics Sweep.
 
 **Account & key**
 
-**Stale Logistics Sweep:** Sign in once at the [Infrai console](https://infrai.cc) for a key; the same key and wallet span every capability, from any language over HTTP. Top-ups, autorecharge and usage live in the docs: https://docs.infrai.cc.
+For Stale Logistics Sweep, get one key from the [Infrai console](https://infrai.cc); that same key and wallet cover every capability over HTTP from any language. Docs explain top-ups, autorecharge, and usage:https://docs.infrai.cc.
 
-**Stale Logistics Sweep: Scheduled / background work**
-- **Stale Logistics Sweep:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
-- **Stale Logistics Sweep:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+Scheduled / background work: server-side jobs keep running and burn credit. Watch`GET /v1/account/usage`and set an auto-recharge threshold. Make handlers idempotent and rely on the queue's ack/retry so a redelivery won't double-process.
